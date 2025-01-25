@@ -1,52 +1,44 @@
-import { screen } from '@testing-library/dom';
-import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
-
-import renderApp, { GitHubRepository } from '../src/app';
-import githubInterceptor from './interceptors/github';
-
-import './setup';
+import { beforeEach, describe, it } from 'vitest';
+import { httpInterceptor } from 'zimic/interceptor/http';
 
 vi.mock('./mock');
 
-describe('Example tests', () => {
-  const ownerName = 'owner';
-  const repositoryName = 'example';
-
-  const repository: GitHubRepository = {
-    id: 1,
-    full_name: `${ownerName}/${repositoryName}`,
-    html_url: `https://github.com/${ownerName}/${repositoryName}`,
+const interceptor = httpInterceptor.create<{
+  '/example': {
+    GET: {
+      response: {
+        200: { body: { message: string } };
+      };
+    };
   };
+}>({
+  type: 'local',
+  baseURL: 'http://localhost:3000',
+});
 
-  beforeEach(() => {
-    document.body.innerHTML = '';
+describe('Example tests', () => {
+  beforeAll(async () => {
+    await interceptor.start();
   });
 
-  it('should render a GitHub repository, if found', async () => {
-    githubInterceptor
-      .get(`/repos/${ownerName}/${repositoryName}`)
-      .respond({
-        status: 200,
-        body: repository,
-      })
-      .times(1);
+  beforeEach(async () => {
+    interceptor.clear();
+  });
 
-    renderApp();
+  afterAll(async () => {
+    await interceptor.stop();
+  });
 
-    const ownerInput = screen.getByRole('textbox', { name: 'Owner' });
-    await userEvent.type(ownerInput, ownerName);
+  it('example', async () => {
+    interceptor.get('/example').respond({
+      status: 200,
+      body: { message: 'ok' },
+    });
 
-    const repositoryInput = screen.getByRole('textbox', { name: 'Repository' });
-    await userEvent.type(repositoryInput, repositoryName);
+    const response = await fetch('http://localhost:3000/example');
+    expect(response.status).toBe(200);
 
-    const searchButton = screen.getByRole('button', { name: 'Search' });
-    await userEvent.click(searchButton);
-
-    const repositoryHeading = await screen.findByRole('heading', { name: repository.full_name });
-    expect(repositoryHeading).toBeInTheDocument();
-
-    const repositoryLink = await screen.findByRole('link', { name: repository.html_url });
-    expect(repositoryLink).toBeInTheDocument();
+    const data = await response.json();
+    expect(data).toEqual({ message: 'ok' });
   });
 });
